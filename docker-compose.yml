@@ -1,0 +1,29 @@
+# docker-compose.yml (root)
+
+services:
+  backend:
+    build: ./backend
+    ports: ["4000:4000"]
+    environment:
+      - PORT=4000
+      - CLIENT_URL=http://localhost:3000
+    networks: [chatnet]
+
+  frontend:
+    build: ./frontend
+    ports: ["3000:3000"]
+    environment:
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
+    depends_on: [backend]
+    networks: [chatnet]
+
+  nginx:
+    image: nginx:alpine
+    ports: ["80:80"]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [frontend, backend]
+    networks: [chatnet]
+
+networks:
+  chatnet:
