@@ -39,6 +39,7 @@ services:
       - PORT=4001
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://user:password@postgres:5432/authdb?schema=public
       - CORS_ORIGIN=http://localhost
       - ACCESS_TOKEN_EXPIRES_IN=15m
       - REFRESH_TOKEN_EXPIRES_IN=7d
@@ -46,6 +47,8 @@ services:
       - REFRESH_TOKEN_SECRET=replace_with_your_64_char_random_secret_here_xyz
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks: [chatnet]
     restart: unless-stopped
@@ -90,7 +93,23 @@ services:
       - mongo_data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
+    networks: [chatnet]
+    restart: unless-stopped
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=authdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d authdb"]
+      interval: 5s
       timeout: 5s
       retries: 5
     networks: [chatnet]
@@ -102,3 +121,4 @@ networks:
 volumes:
   redis_data:
   mongo_data:
+  postgres_data:

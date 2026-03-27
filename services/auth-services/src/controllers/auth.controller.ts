@@ -14,18 +14,27 @@ import {
   revokeAllUserRefreshTokens,
   blockAccessToken,
 } from '../errorHandlers/utils/redis.utils';
+import prisma from '../config/prisma';
 import {
   validateRegisterInput,
   validateLoginInput,
 } from '../errorHandlers/utils/validation.utils';
 import type { AuthenticatedRequest, User } from '../types';
 
-// ─── In-Memory User Store (replace with real DB, e.g. Prisma/TypeORM) ─────────
+// ─── Database Helpers ──────────────────────────────────────────────────────────
+const findUserByEmail = async (email: string): Promise<User | null> => {
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase().trim() },
+  });
+  return user as User | null;
+};
 
-const userStore = new Map<string, User>();
-
-const findUserByEmail = (email: string): User | undefined =>
-  [...userStore.values()].find((u) => u.email === email);
+const findUserById = async (id: string): Promise<User | null> => {
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+  return user as User | null;
+};
 
 // ─── Register ──────────────────────────────────────────────────────────────────
 
@@ -41,28 +50,32 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check duplicate email — use generic message to prevent user enumeration
-    if (findUserByEmail(email)) {
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
       res.status(409).json({ success: false, message: 'Registration failed' });
       return;
     }
 
+    const id = uuidv4();
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Hash password with bcrypt (cost factor 12)
     const passwordHash = await bcrypt.hash(password, config.bcrypt.saltRounds);
 
-    const user: User = {
-      id: uuidv4(),
-      email: email.toLowerCase().trim(),
-      passwordHash,
-      role: 'user',
-      createdAt: new Date(),
-    };
-
-    userStore.set(user.id, user);
+    const newUser = await prisma.user.create({
+      data: {
+        id,
+        email: normalizedEmail,
+        passwordHash,
+        role: 'user',
+        createdAt: new Date(),
+      },
+    });
 
     res.status(201).json({
       success: true,
       message: 'Registration successful',
-      data: { id: user.id, email: user.email, role: user.role },
+      data: { id: newUser.id, email: newUser.email, role: newUser.role },
     });
   } catch (err) {
     console.error('[register]', err);
@@ -82,7 +95,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = findUserByEmail(email?.toLowerCase?.().trim());
+    const user = await findUserByEmail(email);
 
     // Use constant-time comparison even on missing user to prevent timing attacks
     const dummyHash = '$2b$12$invalidhashfortimingnormalization';
@@ -141,7 +154,7 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Get user
-    const user = userStore.get(payload.sub);
+    const user = await findUserById(payload.sub);
     if (!user) {
       res.status(403).json({ success: false, message: 'User not found' });
       return;
@@ -233,7 +246,7 @@ export const logoutAll = async (req: AuthenticatedRequest, res: Response): Promi
 
 export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const user = userStore.get(req.user!.sub);
+    const user = await findUserById(req.user!.sub);
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
