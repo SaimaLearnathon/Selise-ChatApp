@@ -17,6 +17,7 @@ export type UserRole = 'user' | 'admin';
 export interface AccessTokenPayload {
   sub: string;       // user id
   email: string;
+  jti: string; 
   role: UserRole;
   iss: string;
   aud: string;

@@ -10,14 +10,17 @@ export const generateAccessToken = (
   email: string,
   role: UserRole
 ): string => {
-  const payload: Omit<AccessTokenPayload, 'iss' | 'aud'> = {
+  const jti = uuidv4(); // ✅ generate unique token ID
+
+  const payload: Omit<AccessTokenPayload, 'iss' | 'aud' | 'exp' | 'iat'> = {
     sub: userId,
     email,
     role,
+    jti,  // ✅ include jti in payload
   };
 
-  return jwt.sign(payload, config.jwt.accessSecret, {
-    expiresIn: config.jwt.accessExpiresIn,
+  return jwt.sign(payload as object, config.jwt.accessSecret, {
+    expiresIn: config.jwt.accessExpiresIn as unknown as number, // ✅ fix TS2769
     algorithm: 'HS256',
     issuer: config.jwt.issuer,
     audience: config.jwt.audience,
@@ -27,15 +30,15 @@ export const generateAccessToken = (
 // ─── Generate Refresh Token (long-lived, 7d, with unique jti) ─────────────────
 
 export const generateRefreshToken = (userId: string): { token: string; jti: string } => {
-  const jti = uuidv4(); // unique ID used for revocation
+  const jti = uuidv4();
 
   const payload: Omit<RefreshTokenPayload, 'iss'> = {
     sub: userId,
     jti,
   };
 
-  const token = jwt.sign(payload, config.jwt.refreshSecret, {
-    expiresIn: config.jwt.refreshExpiresIn,
+  const token = jwt.sign(payload as object, config.jwt.refreshSecret, {
+    expiresIn: config.jwt.refreshExpiresIn as unknown as number, // ✅ fix TS2769
     algorithm: 'HS256',
     issuer: config.jwt.issuer,
   });
@@ -62,7 +65,7 @@ export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   }) as RefreshTokenPayload;
 };
 
-// ─── Decode Without Verification (e.g., for logging expired tokens) ────────────
+// ─── Decode Without Verification ──────────────────────────────────────────────
 
 export const decodeToken = (token: string): jwt.JwtPayload | null => {
   return jwt.decode(token) as jwt.JwtPayload | null;
