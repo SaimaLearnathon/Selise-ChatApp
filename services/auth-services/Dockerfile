@@ -1,33 +1,32 @@
-# services/auth-services/Dockerfile
-
-# ── Stage 1: build ──────────────────────────────
-FROM node:20-alpine AS builder
-
+FROM node:20-bullseye-slim AS builder
 WORKDIR /app
-
 COPY package*.json ./
+
+# Install build tools and libssl1.1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ libssl1.1 \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN npm install
-
 COPY . .
-
+RUN npx prisma generate
 RUN npm run build
 
-
 # ── Stage 2: production ─────────────────────────
-FROM node:20-alpine AS runner
-
+FROM node:20-bullseye-slim AS runner
 WORKDIR /app
-
 ENV NODE_ENV=production
 
+# Install libssl1.1 for Prisma engine
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl1.1 \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
-
 RUN npm install --omit=dev
-
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 4001
-
-# ✅ Fixed: was dist/server.js → your entry is app.ts which compiles to dist/app.js
-CMD ["node", "dist/app.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/app.js"]

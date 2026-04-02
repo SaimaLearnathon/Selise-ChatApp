@@ -1,30 +1,40 @@
 import { Server, Socket } from 'socket.io';
 import { Message } from '../models/message.model';
 import { Room } from '../models/room.model';
+import { pubClient } from '../config/redis';
 import type { SocketUser, SendMessagePayload } from '../types';
 
 interface AuthSocket extends Socket {
   data: { user: SocketUser };
 }
 
+// ─── Rate Limit Helper ────────────────────────────────────────────────────────
+const isRateLimited = async (key: string, limit: number, windowSeconds: number): Promise<boolean> => {
+  try {
+    const count = await pubClient.incr(key);
+    if (count === 1) {
+      await pubClient.expire(key, windowSeconds);
+    }
+    return count > limit;
+  } catch (err) {
+    console.error('[RateLimit] Error:', err);
+    return false; // Fail open if Redis is down
+  }
+};
+
 export const registerSocketHandlers = (io: Server): void => {
+  // ... (broadcastOnlineUsers and broadcastRooms remain same)
 
   // ── Broadcast online users ─────────────────────────────────────────────────
   const broadcastOnlineUsers = async () => {
     try {
-      const sockets = await io.fetchSockets();
-      const usersMap = new Map<string, { userId: string; email: string }>();
+      // Fetch all unique online users from Redis Set
+      const onlineUsersData = await pubClient.sMembers('online_users');
+      const users = onlineUsersData.map(u => JSON.parse(u));
 
-      for (const s of sockets) {
-        const user = ((s as unknown) as AuthSocket).data?.user;
-        if (user) {
-          usersMap.set(user.userId, { userId: user.userId, email: user.email });
-        }
-      }
-
-      io.emit('online_users_update', Array.from(usersMap.values()));
+      io.emit('online_users_update', users);
     } catch (err) {
-      console.error('[socket] fetchSockets error', err);
+      console.error('[socket] broadcastOnlineUsers error', err);
     }
   };
 
@@ -48,26 +58,70 @@ export const registerSocketHandlers = (io: Server): void => {
   };
 
   // ── Socket connection handler ─────────────────────────────────────────────
-  io.on('connection', (socket: AuthSocket) => {
+  io.on('connection', async (socket: AuthSocket) => {
     const { userId, email } = socket.data.user;
     console.log(`[socket] connected: ${email} (${socket.id})`);
 
-    broadcastOnlineUsers();
-    broadcastRooms();
+    try {
+      // Increment user socket count and add to online set if it's the first socket
+      const userSocketsKey = `user_sockets:${userId}`;
+      const count = await pubClient.incr(userSocketsKey);
+      if (count === 1) {
+        await pubClient.sAdd('online_users', JSON.stringify({ userId, email }));
+      }
 
-    socket.join(`user:${userId}`);
+      broadcastOnlineUsers();
+      broadcastRooms();
+
+      socket.join(`user:${userId}`);
+    } catch (err) {
+      console.error('[socket] connection tracking error', err);
+    }
 
     // ── Join conversation ──────────────────────────────────────────────────
     socket.on('join_conversation', async (conversationId: string) => {
       if (!conversationId) return;
+      const cacheKey = `messages:${conversationId}`;
+
       try {
         socket.join(`conv:${conversationId}`);
+
+        // 1. Try fetching from Redis cache
+        const cachedMessages = await pubClient.lRange(cacheKey, 0, 49);
+
+        if (cachedMessages.length > 0) {
+          const history = cachedMessages.map(m => JSON.parse(m)).reverse();
+          socket.emit('message_history', history);
+          console.log(`[socket] ${email} joined conversation: ${conversationId} (Cache Hit)`);
+          return;
+        }
+
+        // 2. Cache miss: Fetch from MongoDB
         const history = await Message.find({ conversationId })
           .sort({ createdAt: -1 })
           .limit(50)
           .lean();
+
         socket.emit('message_history', history.reverse());
-        console.log(`[socket] ${email} joined conversation: ${conversationId}`);
+        console.log(`[socket] ${email} joined conversation: ${conversationId} (Cache Miss)`);
+
+        // 3. Populate Redis cache (async)
+        if (history.length > 0) {
+          const pipeline = pubClient.multi();
+          // We need original order (desc) for LPUSH to maintain desc order in list
+          const messagesToCache = await Message.find({ conversationId })
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .lean();
+
+          pipeline.del(cacheKey);
+          messagesToCache.forEach(m => {
+            pipeline.rPush(cacheKey, JSON.stringify(m));
+          });
+          pipeline.expire(cacheKey, 3600); // 1 hour expiry
+          await pipeline.exec();
+        }
+
       } catch (err) {
         console.error('[socket] join_conversation error:', err);
         socket.emit('error', { message: 'Failed to load messages' });
@@ -79,6 +133,12 @@ export const registerSocketHandlers = (io: Server): void => {
       const { conversationId, content } = data;
       if (!conversationId || !content?.trim()) return;
 
+      // Rate limit: 5 messages per 2 seconds
+      if (await isRateLimited(`ratelimit:msg:${userId}`, 5, 2)) {
+        socket.emit('error', { message: 'Slow down! You are sending messages too fast.' });
+        return;
+      }
+
       try {
         const message = await Message.create({
           conversationId,
@@ -86,6 +146,13 @@ export const registerSocketHandlers = (io: Server): void => {
           senderEmail: email,
           content: content.trim(),
         });
+
+        // Update Redis cache (LPUSH + LTRIM)
+        const cacheKey = `messages:${conversationId}`;
+        const pipeline = pubClient.multi();
+        pipeline.lPush(cacheKey, JSON.stringify(message));
+        pipeline.lTrim(cacheKey, 0, 49);
+        await pipeline.exec();
 
         io.to(`conv:${conversationId}`).emit('receive_message', {
           _id: message._id,
@@ -133,14 +200,34 @@ export const registerSocketHandlers = (io: Server): void => {
     });
 
     // ── Disconnect ────────────────────────────────────────────────────────
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', async (reason) => {
       console.log(`[socket] disconnected: ${email} — ${reason}`);
-      setTimeout(() => broadcastOnlineUsers(), 100);
+
+      try {
+        const userSocketsKey = `user_sockets:${userId}`;
+        const count = await pubClient.decr(userSocketsKey);
+
+        if (count <= 0) {
+          await pubClient.del(userSocketsKey);
+          await pubClient.sRem('online_users', JSON.stringify({ userId, email }));
+        }
+
+        setTimeout(() => broadcastOnlineUsers(), 100);
+      } catch (err) {
+        console.error('[socket] disconnect tracking error', err);
+      }
     });
 
     // ── Create room ───────────────────────────────────────────────────────
     socket.on('create_room', async ({ name, icon }: { name: string; icon?: string }) => {
       if (!name?.trim()) return;
+
+      // Rate limit: 1 room per 10 seconds
+      if (await isRateLimited(`ratelimit:room:${userId}`, 1, 10)) {
+        socket.emit('error', { message: 'Please wait before creating another room.' });
+        return;
+      }
+
       try {
         await Room.create({
           name: name.trim(),
