@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost/api/auth';
+const AUTH_URL ='https://auth-services.redground-f9d124ef.centralindia.azurecontainerapps.io/api/auth';
 // Extract base API URL (e.g., https://.../api) and ensure it ends with a slash
 const API_URL = AUTH_URL.replace(/\/auth\/?$/, '') + '/';
 
