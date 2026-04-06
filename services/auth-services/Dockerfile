@@ -29,4 +29,4 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 4001
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/app.js"]
+CMD ["sh", "-c", "until npx prisma db push --accept-data-loss; do echo 'Waiting for database...'; sleep 5; done && node dist/app.js"]

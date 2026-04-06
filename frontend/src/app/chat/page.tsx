@@ -58,7 +58,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!token) return;
 
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost';
+    const socketUrl = 'https://chat-services.redground-f9d124ef.centralindia.azurecontainerapps.io';
     socket = io(socketUrl, {
       auth: { token },
       transports: ['websocket', 'polling']
