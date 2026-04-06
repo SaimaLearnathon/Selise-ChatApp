@@ -10,10 +10,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG NEXT_PUBLIC_AUTH_URL
-ARG NEXT_PUBLIC_SOCKET_URL
-ENV NEXT_PUBLIC_AUTH_URL=$NEXT_PUBLIC_AUTH_URL
-ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_AUTH_URL=https://auth-services.redground-f9d124ef.centralindia.azurecontainerapps.io/api/auth
+ENV NEXT_PUBLIC_SOCKET_URL=https://chat-services.redground-f9d124ef.centralindia.azurecontainerapps.io
 
 RUN npm run build
 
