@@ -115,10 +115,7 @@ npx jest --verbose
    ```powershell
    ./deploy-azure.ps1
    ```
-3. Alternatively, use the manifests in the `k8s/` folder:
-   ```bash
-   kubectl apply -f k8s/
-   ```
+
 
 ---
 
