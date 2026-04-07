@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-path: services/auth-services/package-lock.json
+          cache-dependency-path: services/auth-services/package-lock.json
       - name: Install dependencies
         run: npm ci
         working-directory: services/auth-services
@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-path: services/chat-services/package-lock.json
+          cache-dependency-path: services/chat-services/package-lock.json
       - name: Install dependencies
         run: npm ci
         working-directory: services/chat-services
@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-path: frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
         working-directory: frontend
