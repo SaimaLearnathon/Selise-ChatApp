@@ -131,7 +131,7 @@ export default function LoginPage() {
 
             {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <label htmlFor="email" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Email Address
               </label>
               <div className="flex items-center bg-slate-800 border border-white/5 rounded-xl focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
@@ -141,6 +141,7 @@ export default function LoginPage() {
                   </svg>
                 </span>
                 <input
+                  id="email"
                   type="email"
                   placeholder="you@example.com"
                   value={email}
@@ -153,7 +154,7 @@ export default function LoginPage() {
 
             {/* Password */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <label htmlFor="password" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Password
               </label>
               <div className="flex items-center bg-slate-800 border border-white/5 rounded-xl focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
@@ -164,6 +165,7 @@ export default function LoginPage() {
                   </svg>
                 </span>
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}

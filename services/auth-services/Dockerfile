@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN npm install
 COPY . .
-RUN npx prisma generate
+RUN ./node_modules/.bin/prisma generate
 RUN npm run build
 
 # ── Stage 2: production ─────────────────────────
@@ -29,4 +29,4 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 4001
-CMD ["sh", "-c", "until npx prisma db push --accept-data-loss; do echo 'Waiting for database...'; sleep 5; done && node dist/app.js"]
+CMD ["sh", "-c", "while true; do ./node_modules/.bin/prisma db push --accept-data-loss && break; echo 'Retrying in 5s...'; sleep 5; done && node dist/app.js"]

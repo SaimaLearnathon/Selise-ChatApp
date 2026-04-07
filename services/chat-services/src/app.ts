@@ -32,28 +32,4 @@ app.get('/health', (_req: Request, res: Response) => {
 // ─── Chat API Routes ───────────────────────────────────────────────────────────
 // Add other API routes here if needed
 
-// ─── Start ─────────────────────────────────────────────────────────────────────
-const start = async (): Promise<void> => {
-  try {
-    await connectMongo();
-    await connectRedis();
-
-    io.adapter(createAdapter(pubClient, subClient));
-    console.log('[Socket.IO] Redis adapter attached');
-
-    io.use(socketAuthMiddleware);
-    registerSocketHandlers(io);
-
-    server.listen(config.port, () => {
-      console.log(`[chat-services] running on port ${config.port} [${config.nodeEnv}]`);
-    });
-
-  } catch (err) {
-    console.error('[chat-services] failed to start:', err);
-    process.exit(1);
-  }
-};
-
-start();
-
-export { io };
+export { io, app, server };
